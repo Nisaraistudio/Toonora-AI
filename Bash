@@ -1,0 +1,2 @@
+npm install firebase-admin openai @upstash/ratelimit @upstash/redis
+
