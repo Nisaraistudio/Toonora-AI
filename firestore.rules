@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to check if a specific user owns the project
+    function isProjectOwner(projectId) {
+      return isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+
+    // Helper for incoming writes to ensure the project is assigned to the current user
+    function incomingProjectOwnedBySelf() {
+      return request.resource.data.userId == request.auth.uid;
+    }
+
+    // Helper to check sub-resource access via the parent project document
+    function hasAccessToParentProject(projectId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/projects/$(projectId)).data.userId == request.auth.uid;
+    }
+
+    // Users Collection: Users can only read/write their own profiles
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Projects Collection: Enforces tenant isolation boundaries
+    match /projects/{projectId} {
+      // Users can only view or delete their own projects
+      allow read, delete: if isProjectOwner(projectId);
+      
+      // Creating or updating a project requires the requester to assign themselves as the owner
+      allow create: if isAuthenticated() && incomingProjectOwnedBySelf();
+      allow update: if isProjectOwner(projectId) && incomingProjectOwnedBySelf();
+
+      // Nested Project Assets (Sub-collections)
+      // Characters Sub-collection
+      match /characters/{characterId} {
+        allow read, write: if hasAccessToParentProject(projectId);
+      }
+
+      // Scenes Sub-collection
+      match /scenes/{sceneId} {
+        allow read, write: if hasAccessToParentProject(projectId);
+      }
+
+      // Assets Sub-collection
+      match /assets/{assetId} {
+        allow read, write: if hasAccessToParentProject(projectId);
+      }
+
+      // Generations Sub-collection
+      match /generations/{generationId} {
+        allow read, write: if hasAccessToParentProject(projectId);
+      }
+
+      // Exports Sub-collection
+      match /exports/{exportId} {
+        allow read, write: if hasAccessToParentProject(projectId);
+      }
+    }
+
+    // Audit Logs Collection: Strictly server-side write only, users cannot read or modify
+    match /auditLogs/{logId} {
+      allow read, write: if false; 
+    }
+  }
+}
